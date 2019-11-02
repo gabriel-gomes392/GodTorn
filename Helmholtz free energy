@@ -1,0 +1,315 @@
+#include "bcc_it.cc"
+#include <iostream>
+#include <fstream>
+#include <cmath>
+
+using namespace std;
+
+int main()
+{
+  const int n_comp=2;
+  const int n_f=n_comp-1;
+  const int n_g=n_comp-2; 
+  int ns_2;
+  int ns_3;
+
+  bool allow_interdiff=false;
+  bool toosmall1A=false;
+  bool toosmall2A=false;
+  bool toosmall3A=false;
+  bool toosmall1B=false;
+  bool toosmall2B=false;
+  bool toosmall3B=false;
+  bool check_comp=false;
+
+  string mode;
+
+  cout << "Setting report names\n";
+  string report_name="teste_report.txt";
+
+  cout << "done\n";
+
+  bcc_it phaseA(n_comp);
+  bcc_it phaseB(n_comp);
+
+  phaseA.reset();
+  phaseB.reset();
+
+  string comp[2];
+
+ 
+  comp[0]="V";
+  comp[1]="Nb";
+
+  double * pA_A;
+  double * pB_A;
+  double * pG_A;
+  double * pD_A;
+  
+  double * pA_B;
+  double * pB_B;
+  double * pG_B;
+  double * pD_B;
+
+  pA_A = new double [n_comp];
+  pB_A = new double [n_comp];
+  pG_A = new double [n_comp];
+  pD_A = new double [n_comp];
+  
+  pA_B = new double [n_comp];
+  pB_B = new double [n_comp];
+  pG_B = new double [n_comp];
+  pD_B = new double [n_comp];
+  
+  double * mju_A;
+  double * mju_B;
+
+  mju_A = new double [n_comp];
+  mju_B = new double [n_comp];
+
+  double d_mu=0.0; 
+
+  double T0;
+  double dF[2];
+  double F[2];
+  double U[2];
+  double S[2];
+  double G[2];
+  dF[0]=0.0;
+  dF[1]=0.0;
+  
+  //double * t_A;
+  //double * t_B;
+  //double c_4;
+
+ // t_A = new double [n_f];
+ //t_B = new double [n_f];
+
+ //double d_mu= -100.0;
+  
+  ifstream conf_f;
+  ifstream config_A;
+  ifstream config_B;
+  ofstream cvm_out;
+  ofstream prob;
+  ofstream report;
+
+  int count[2];
+  
+  count[0]=0;
+  count[1]=0;
+
+  int iterations[2];
+
+  iterations[0]=0;
+  iterations[1]=0;
+
+  int n_iterations=0;
+
+  int n_iterA=0;
+  int n_iterB=0;
+  
+  cvm_out.open("teste_out6.txt");
+
+  conf_f.open("teste_conf6.txt");
+  report.open(report_name);
+
+  conf_f >> mode;
+
+  if(mode=="DP") allow_interdiff=true;
+  
+  prob.open("teste_prob6.txt");
+  
+  ns_2= phaseA.n_systems(n_comp,n_g);
+  
+  string fname2[ns_2];
+  string fname_conf[2];
+
+  //Here we read in sequence the filenames for the formation energies of the ns_2 binary systems
+  //Check the file bcc_it.cc to obtain the order in which the systems are introduced
+  
+  for(int i =0; i< ns_2; i++)
+    {
+      conf_f >> fname2[i];
+    };
+
+ 
+
+  //The next step is to read the initial configuration file
+  
+  conf_f >> fname_conf[0];
+  conf_f >> fname_conf[1];
+
+  config_A.open(fname_conf[0]);
+  config_B.open(fname_conf[1]);
+
+  //This opens the individual files and reads the eps array sequentially
+
+  int ordem=0;
+  
+  for(int i = 0; i< n_f;i++)
+    for(int j = i+1; j< n_comp;j++) 
+      {
+	phaseA.load_eps2(fname2[ordem],i,j);
+	phaseB.load_eps2(fname2[ordem],i,j);
+	ordem++;
+      };
+  
+  ordem=0;
+  
+
+  //This reads the configuration file and calculates the initial point probabilities
+  //Pay attention not to end up in null or negative numbers, because I left the explicit check
+  //out of the algorithm (it is implicitly assumed the operator knows what he or she is doing)
+  
+  pA_A[1] = 1.0;
+  pB_A[1] = 1.0;
+  pG_A[1] = 1.0;
+  pD_A[1] = 1.0;
+  
+  for(int j =0; j < n_f; j++)
+    {
+      config_A >> pA_A[j] >> pB_A[j] >> pG_A[j] >> pD_A[j];
+      pA_A[1] -= pA_A[j];
+      pB_A[1] -= pB_A[j];
+      pG_A[1] -= pG_A[j];
+      pD_A[1] -= pD_A[j];
+    };
+  
+  pA_B[1] = 1.0;
+  pB_B[1] = 1.0;
+  pG_B[1] = 1.0;
+  pD_B[1] = 1.0;
+  
+  for(int j =0; j < n_f; j++)
+    {
+      config_B >> pA_B[j] >> pB_B[j] >> pG_B[j] >> pD_B[j];
+      pA_B[1] -= pA_B[j];
+      pB_B[1] -= pB_B[j];
+      pG_B[1] -= pG_B[j];
+      pD_B[1] -= pD_B[j];
+    };
+  
+  phaseA.set(pA_A,pB_A,pG_A,pD_A);
+  phaseB.set(pA_B,pB_B,pG_B,pD_B);
+
+  phaseA.rescale();
+  phaseB.rescale();
+
+  //The initial point probablities are printed to the std_out to check
+
+  for(int i =0; i< n_comp;i++)
+    cout << "Phase A: " << pA_A[i] << ", " << pB_A[i] << ", "
+	 << pG_A[i] << ", " << pD_A[i] << "\n";
+
+  for(int i =0; i< n_comp;i++)
+    cout << "Phase B: " << pA_B[i] << ", " << pB_B[i] << ", "
+	 << pG_B[i] << ", " << pD_B[i] << "\n";
+
+  //Reads the temperature for the calculation
+
+  conf_f >> T0;
+  
+
+
+  phaseA.set_TK(T0);
+  phaseB.set_TK(T0);
+  
+  //Reads the initial chemical potentials
+  
+  mju_A[n_f]=0.0;
+  mju_B[n_f]=0.0;
+
+  for(int j=0; j < n_f; j++)
+    {
+      conf_f >> mju_A[j];
+      mju_A[n_f] -= mju_A[j];
+    };
+
+
+  phaseA.set_mu(mju_A);
+  phaseB.set_mu(mju_A);
+
+  //This is necessary everytime you change the chemical potentials
+
+  phaseA.update_epc();
+  phaseB.update_epc();
+
+  //The step for seeking the composition is obtained next
+
+  conf_f >> d_mu;
+
+  //Now printing everything to std_out
+
+  cout << "T = " << T0 << "\n";
+
+  cout << "Phase A: ";
+  for(int j=0; j<n_comp; j++)
+    cout << mju_A[j] << ", ";
+
+  cout << "\n";
+
+  cout << "Phase B: ";
+  for(int j=0; j<n_comp; j++)
+    cout << mju_B[j] << ", ";
+
+  cout << "\n";
+  
+  cout << "d_mu = " << d_mu << "\n";
+
+  
+  //This is a the first NIM iteration
+
+  F[0] = phaseA.get_config();
+  F[1] = phaseB.get_config();
+
+  count[0] = phaseA.get_count_NIM();
+  count[1] = phaseB.get_count_NIM();
+
+  dF[0] = phaseA.get_dF();
+  dF[1] = phaseB.get_dF();
+
+  cout << "iterations= " << count[0] << "\t" << count[1]
+       << ", F = " << F[0] << "\t" << F[1] 
+       << ", dF = " << dF[0] << "\t" << dF[1] << "\n";
+
+  G[0] = phaseA.get_G();
+  U[0] = phaseA.get_U();
+  S[0] = phaseA.get_S();
+
+  G[1] = phaseB.get_G();
+  U[1] = phaseB.get_U();
+  S[1] = phaseB.get_S();
+
+  cvm_out << "Phase A " << F[0] << "\t" << U[0] << "\t" << S[0] << "\t" << G[0];
+  cvm_out << "\n";
+  cvm_out << "Phase B " << F[1] << "\t" << U[1] << "\t" << S[1] << "\t" << G[1];
+  cvm_out << "\n";
+
+  report.open(report_name);
+  report.close();
+  conf_f.close();
+  config_A.close();
+  config_B.close();
+
+  cvm_out.close();
+  prob.close();
+  report.close();
+  
+  delete [] pA_A;
+  delete [] pB_A;
+  delete [] pG_A;
+  delete [] pD_A;
+  
+  delete [] pA_B;
+  delete [] pB_B;
+  delete [] pG_B;
+  delete [] pD_B;
+  
+  delete [] mju_A;
+  delete [] mju_B;
+  
+ 
+  
+  return(0);
+}
